@@ -9,7 +9,7 @@
 		"vscode": "^1.75.0"
 	},
 	"activationEvents": [
-		"onLanguage:plaintext"
+		"onStartupFinished"
 	],
 	"serverInfo": {
 			"name": "unginxed",

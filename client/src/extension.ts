@@ -35,50 +35,68 @@ const REQUIRED_PACKAGES = [
     'crossplane',
     'jinja2',
     'xhtml2pdf',
+    'pygls'
 ]
 
 
 let lsClient: LanguageClient | undefined;
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-    // Pre-requisite: Python interpreter must be selected
+    // Prepare venv URI and paths
+    const venvUri = vscode.Uri.joinPath(context.globalStorageUri, 'venv')
+    const venvPath = venvUri.fsPath
+    const venvScriptsUri = vscode.Uri.joinPath(venvUri, 'Scripts')
+
+    // Currently only supports Windows by using hard-coded .exe extension
+    const venvPythonUri = vscode.Uri.joinPath(venvScriptsUri, 'python.exe')
+    const venvPythonPath = venvPythonUri.fsPath
+
+    // Python interpreter may be selected some time later
     let pythonInterpreter = (await getInterpreterDetails()).path?.[0]
-    let venvScriptsPath = ''
-    let venvActivateCommand = ''
+
+    const performFirstTimeSetup = async () => {
+        // Check if venv already exists (first-time setup has been performed)
+        try {
+            await vscode.workspace.fs.readDirectory(venvUri)
     
-    // TODO: Subscribe to onDidChangePythonInterpreter event and automatically continue operations
-    if(!pythonInterpreter) {
-        vscode.window.showErrorMessage('A Python interpreter must be selected before this extension can be used.')
-    } else {
-        // Check pre-requisite packages
-        const pipFreezeResult = await execAsync(`${pythonInterpreter} -m pip freeze`)
-        const lines = pipFreezeResult.stdout.split('\n')
-        const packages: string[] = lines.map((line) => line.split('==')[0])
+            // Check if all required packages are installed (may have failed halfway)
+            const pipFreezeResult = await execAsync(`${venvPythonPath} freeze`)
+            const lines = pipFreezeResult.stdout.split('\n')
+            const packages = lines.map((line) => line.split('==')[0])
+            if(REQUIRED_PACKAGES.some((requiredPackage) => !packages.includes(requiredPackage)))
+                throw new Error('Required packages missing. Installing dependencies...')
 
-        // Install packages if requirements not installed
-        if(REQUIRED_PACKAGES.some((requiredPackage) => !packages.includes(requiredPackage))) {
-            vscode.window.showInformationMessage('Installing required python packages...')
-            const venvUri = vscode.Uri.joinPath(context.globalStorageUri, 'venv')
-
-            // Create venv
-            const venvPath = venvUri.fsPath
-
-            let venvCreationResult = await execAsync(`${pythonInterpreter} -m venv ${venvPath}`)
-
-            if(venvCreationResult.err) {
-                vscode.window.showErrorMessage(`Error creating venv: ${venvCreationResult.err.message}`)
+            /* Function ends here if first time setup has already been completed */
+        } catch(e) {
+            // TODO: Subscribe to onDidChangePythonInterpreter event and automatically continue operations
+            if(!pythonInterpreter) {
+                vscode.window.showErrorMessage('[uNGINXed] Python interpreter needs to be selected to perform first-time setup.')
+                return
             }
+    
+            // Create venv. This is the only thing the user-selected python interpreter will be used for.
+            const venvCreationResult = await execAsync(`${pythonInterpreter} -m venv ${venvPath}`)
+    
+            // TODO: Try to ship a python executable with the vsix to avoid depending on the user's system
+            //       having python installed
+            if(venvCreationResult.err) {
+                vscode.window.showErrorMessage(`[uNGINXed] Error creating venv: ${venvCreationResult.err.message}`)
+                return
+            }
+            
+            vscode.window.showInformationMessage('[uNGINXed] Installing dependencies...')
+            
+            // Upon successful creation of venv, install required packages.
+            const pipInstallResult = await execAsync(`${venvPythonPath} -m pip install ${REQUIRED_PACKAGES.join(' ')}`)
 
-            // Install packages
-            // TODO: Make this platform-independent, do not rely on hard-coded '.bat' extension
-            venvScriptsPath = vscode.Uri.joinPath(venvUri, 'Scripts').fsPath
-            venvActivateCommand = `${venvScriptsPath}\\activate.bat`
-            const pipInstallResult = await execAsync(`${venvActivateCommand} && python -m pip install ${REQUIRED_PACKAGES.join(' ')}`)
-            console.log(venvScriptsPath)
-            console.log(pipInstallResult.stdout)
-            console.log(pipInstallResult.stderr)
+            if(pipInstallResult.err)
+                vscode.window.showErrorMessage('[uNGINXed] Error installing dependencies.')
+            else
+                vscode.window.showInformationMessage('[uNGINXed] Setup complete!')
         }
     }
-
+    
+    await performFirstTimeSetup()
+    
     // This is required to get server name and module. This should be
     // the first thing that we do in this extension.
     const serverInfo = loadServerDefaults();
@@ -116,7 +134,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             // Execute command to write PDF
             const unginxedModulePath = vscode.Uri.joinPath(context.extensionUri, 'uNGINXed').fsPath
             const openEditorFilePath = textEditor.document.fileName
-            const command = `${venvActivateCommand} && set PYTHONPATH=%PYTHONPATH%;${unginxedModulePath} && python -m unginxed ${openEditorFilePath} --pdf-output=${outputDir}`
+
+            // Currently only supports windows by executing batch script commands.
+            // For this call of "exec", edit the PYTHONPATH variable
+            const command = `SET PYTHONPATH=%PYTHONPATH%;${unginxedModulePath} && ${venvPythonPath} -m unginxed ${openEditorFilePath} --pdf-output=${outputDir}`
             console.log('Writing PDF. Command:')
             console.log(command)
 
@@ -134,20 +155,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     traceLog(`Module: ${serverInfo.module}`);
     traceVerbose(`Configuration: ${JSON.stringify(serverInfo)}`);
 
-    const getRunServerCommand = () => `${venvActivateCommand} && python`
-
     const runServer = async () => {
         const interpreter = getInterpreterFromSetting(serverId);
         if (interpreter && interpreter.length > 0 && checkVersion(await resolveInterpreter(interpreter))) {
             traceVerbose(`Using interpreter from ${serverInfo.module}.interpreter: ${interpreter.join(' ')}`);
-            lsClient = await restartServer(getRunServerCommand(), serverId, serverName, outputChannel, lsClient);
+            lsClient = await restartServer(venvPythonPath, serverId, serverName, outputChannel, lsClient);
             return;
         }
 
         const interpreterDetails = await getInterpreterDetails();
         if (interpreterDetails.path) {
             traceVerbose(`Using interpreter from Python extension: ${interpreterDetails.path.join(' ')}`);
-            lsClient = await restartServer(getRunServerCommand(), serverId, serverName, outputChannel, lsClient);
+            lsClient = await restartServer(venvPythonPath, serverId, serverName, outputChannel, lsClient);
             return;
         }
 
@@ -161,6 +180,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     context.subscriptions.push(
         onDidChangePythonInterpreter(async () => {
+            vscode.window.showErrorMessage('')
+            pythonInterpreter = (await getInterpreterDetails()).path?.[0]
+            await performFirstTimeSetup()
             await runServer();
         }),
         onDidChangeConfiguration(async (e: vscode.ConfigurationChangeEvent) => {
