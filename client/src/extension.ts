@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import * as vscode from 'vscode';
+import { exec } from 'child_process';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { registerLogger, traceError, traceLog, traceVerbose } from './common/log/logging';
 import {
@@ -42,6 +43,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.env.onDidChangeLogLevel(async (e) => {
             await changeLogLevel(outputChannel.logLevel, e);
         }),
+        vscode.commands.registerTextEditorCommand('unginxed.generatePDF', async (textEditor, _) => {
+            const pythonInterpreter = (await getInterpreterDetails()).path?.[0]
+
+            if(!pythonInterpreter) {
+                vscode.window.showInformationMessage('Select a python interpreter before running this command.')
+            } else {
+                // Create directory to write PDF
+                const workspaceDir = vscode.workspace.workspaceFolders[0].uri
+                const outputUri = vscode.Uri.joinPath(workspaceDir, 'output', 'unginxed')
+                const outputDir = outputUri.fsPath
+                vscode.workspace.fs.createDirectory(outputUri)
+
+                // Execute command to write PDF
+                const unginxedModulePath = vscode.Uri.joinPath(context.extensionUri, 'uNGINXed').fsPath
+                const openEditorFilePath = textEditor.document.fileName
+                const command = `set PYTHONPATH=%PYTHONPATH%;${unginxedModulePath} && ${pythonInterpreter} -m unginxed ${openEditorFilePath} --pdf-output=${outputDir}`
+
+                // Currently only tested for windows
+                exec(command, (err, stdout, stderr) => {
+                    if(err)
+                        vscode.window.showErrorMessage(`Unable to generate PDF. Error: ${stderr}`)
+                    else
+                        vscode.window.showInformationMessage(`Report generated at ${outputDir}`)
+                })
+            }
+        })
     );
 
     traceLog(`Name: ${serverName}`);

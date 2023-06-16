@@ -39,7 +39,14 @@
 					"description": "Traces the communication between VS Code and the language server."
 				}
 			}
-		}
+		},
+		"commands": [
+			{
+				"command": "unginxed.generatePDF",
+				"title": "Generate PDF report",
+				"enablement": "resourceExtname == .conf"
+			}
+		]
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",
