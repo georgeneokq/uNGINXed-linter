@@ -43,7 +43,7 @@
 		"commands": [
 			{
 				"command": "unginxed.generatePDF",
-				"title": "Generate PDF report",
+				"title": "Generate PDF Report",
 				"enablement": "resourceExtname == .conf"
 			}
 		]
