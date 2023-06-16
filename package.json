@@ -8,7 +8,12 @@
 	"engines": {
 		"vscode": "^1.75.0"
 	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/georgeneokq/uNGINXed-linter"
+	},
 	"activationEvents": [
+		"onStartupFinished",
 		"onLanguage:plaintext"
 	],
 	"serverInfo": {
@@ -50,10 +55,12 @@
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",
-		"compile": "tsc -b",
-		"watch": "tsc -b -w",
+		"build-python": "python ./tools/build-python.py",
+		"build-vsix": "mkdir dist && npx -y @vscode/vsce package --out=\"./dist/unginxed-linter.vsix\"",
+		"compile": "npm run build-python && tsc -b",
+		"watch": "npm run build-python && tsc -b -w",
 		"lint": "eslint ./client/src --ext .ts,.tsx",
-		"postinstall": "cd client && npm install && cd ..",
+		"postinstall": "npm -w client install",
 		"test": "sh ./scripts/e2e.sh"
 	},
 	"devDependencies": {

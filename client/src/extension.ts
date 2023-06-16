@@ -2,16 +2,13 @@
 // Licensed under the MIT License.
 
 import * as vscode from 'vscode';
-import { exec } from 'child_process';
+import { exec, ExecException } from 'child_process';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { registerLogger, traceError, traceLog, traceVerbose } from './common/log/logging';
 import {
     checkVersion,
     getInterpreterDetails,
-    initializePython,
-    onDidChangePythonInterpreter,
     resolveInterpreter,
-    runPythonExtensionCommand,
 } from './common/python';
 import { restartServer } from './common/server';
 import { checkIfConfigurationChanged, getInterpreterFromSetting } from './common/settings';
@@ -19,8 +16,37 @@ import { loadServerDefaults } from './common/setup';
 import { getLSClientTraceLevel, getProjectRoot } from './common/utilities';
 import { createOutputChannel, onDidChangeConfiguration, registerCommand } from './common/vscodeapi';
 
+interface ExecReturn {
+    err: ExecException
+    stdout: string
+    stderr: string
+}
+
+const execAsync: (command: string) => Promise<ExecReturn> = (command: string) => (new Promise((resolve, reject) => {
+    exec(command, (err, stdout, stderr) => {
+        resolve({ err, stdout, stderr })
+    })
+}))
+
+const REQUIRED_PACKAGES = [
+    'crossplane',
+    'jinja2',
+    'xhtml2pdf',
+    'pygls'
+]
+
+
 let lsClient: LanguageClient | undefined;
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+    // Prepare venv URI and paths
+    const venvUri = vscode.Uri.joinPath(context.extensionUri, 'venv')
+    const venvPath = venvUri.fsPath
+    const venvScriptsUri = vscode.Uri.joinPath(venvUri, 'Scripts')
+
+    // Currently only supports Windows by using hard-coded .exe extension
+    const venvPythonUri = vscode.Uri.joinPath(venvScriptsUri, 'python.exe')
+    const venvPythonPath = venvPythonUri.fsPath
+    
     // This is required to get server name and module. This should be
     // the first thing that we do in this extension.
     const serverInfo = loadServerDefaults();
@@ -44,30 +70,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             await changeLogLevel(outputChannel.logLevel, e);
         }),
         vscode.commands.registerTextEditorCommand('unginxed.generatePDF', async (textEditor, _) => {
-            const pythonInterpreter = (await getInterpreterDetails()).path?.[0]
+            // Create directory to write PDF
+            const workspaceDir = vscode.workspace.workspaceFolders[0].uri
+            const outputUri = vscode.Uri.joinPath(workspaceDir, 'output', 'unginxed')
+            const outputDir = outputUri.fsPath
+            vscode.workspace.fs.createDirectory(outputUri)
 
-            if(!pythonInterpreter) {
-                vscode.window.showInformationMessage('Select a python interpreter before running this command.')
-            } else {
-                // Create directory to write PDF
-                const workspaceDir = vscode.workspace.workspaceFolders[0].uri
-                const outputUri = vscode.Uri.joinPath(workspaceDir, 'output', 'unginxed')
-                const outputDir = outputUri.fsPath
-                vscode.workspace.fs.createDirectory(outputUri)
+            // Execute command to write PDF
+            const unginxedModulePath = vscode.Uri.joinPath(context.extensionUri, 'uNGINXed').fsPath
+            const openEditorFilePath = textEditor.document.fileName
 
-                // Execute command to write PDF
-                const unginxedModulePath = vscode.Uri.joinPath(context.extensionUri, 'uNGINXed').fsPath
-                const openEditorFilePath = textEditor.document.fileName
-                const command = `set PYTHONPATH=%PYTHONPATH%;${unginxedModulePath} && ${pythonInterpreter} -m unginxed ${openEditorFilePath} --pdf-output=${outputDir}`
+            // Currently only supports windows by executing batch script commands.
+            // For this call of "exec", edit the PYTHONPATH variable
+            const command = `SET PYTHONPATH=%PYTHONPATH%;${unginxedModulePath} && ${venvPythonPath} -m unginxed ${openEditorFilePath} --pdf-output=${outputDir}`
+            console.log('Writing PDF. Command:')
+            console.log(command)
 
-                // Currently only tested for windows
-                exec(command, (err, stdout, stderr) => {
-                    if(err)
-                        vscode.window.showErrorMessage(`Unable to generate PDF. Error: ${stderr}`)
-                    else
-                        vscode.window.showInformationMessage(`Report generated at ${outputDir}`)
-                })
-            }
+            // Currently only tested for windows
+            exec(command, (err, stdout, stderr) => {
+                if(err)
+                    vscode.window.showErrorMessage(`Unable to generate PDF. Error: ${stderr}`)
+                else
+                    vscode.window.showInformationMessage(`Report generated at ${outputDir}`)
+            })
         })
     );
 
@@ -76,32 +101,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     traceVerbose(`Configuration: ${JSON.stringify(serverInfo)}`);
 
     const runServer = async () => {
-        const interpreter = getInterpreterFromSetting(serverId);
-        if (interpreter && interpreter.length > 0 && checkVersion(await resolveInterpreter(interpreter))) {
-            traceVerbose(`Using interpreter from ${serverInfo.module}.interpreter: ${interpreter.join(' ')}`);
-            lsClient = await restartServer(serverId, serverName, outputChannel, lsClient);
-            return;
-        }
-
-        const interpreterDetails = await getInterpreterDetails();
-        if (interpreterDetails.path) {
-            traceVerbose(`Using interpreter from Python extension: ${interpreterDetails.path.join(' ')}`);
-            lsClient = await restartServer(serverId, serverName, outputChannel, lsClient);
-            return;
-        }
-
-        traceError(
-            'Python interpreter missing:\r\n' +
-                '[Option 1] Select python interpreter using the ms-python.python.\r\n' +
-                `[Option 2] Set an interpreter using "${serverId}.interpreter" setting.\r\n` +
-                'Please use Python 3.7 or greater.',
-        );
+        lsClient = await restartServer(venvPythonPath, serverId, serverName, outputChannel, lsClient);
     };
 
     context.subscriptions.push(
-        onDidChangePythonInterpreter(async () => {
-            await runServer();
-        }),
         onDidChangeConfiguration(async (e: vscode.ConfigurationChangeEvent) => {
             if (checkIfConfigurationChanged(e, serverId)) {
                 await runServer();
@@ -112,16 +115,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }),
     );
 
-    setImmediate(async () => {
-        const interpreter = getInterpreterFromSetting(serverId);
-        if (interpreter === undefined || interpreter.length === 0) {
-            traceLog(`Python extension loading`);
-            await initializePython(context.subscriptions);
-            traceLog(`Python extension loaded`);
-        } else {
-            await runServer();
-        }
-    });
+    await runServer()
 }
 
 export async function deactivate(): Promise<void> {
