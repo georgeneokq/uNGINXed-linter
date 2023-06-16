@@ -21,12 +21,12 @@ export type IInitOptions = { settings: ISettings[]; globalSettings: ISettings };
 
 async function createServer(
     settings: ISettings,
+    command: string,
     serverId: string,
     serverName: string,
     outputChannel: LogOutputChannel,
     initializationOptions: IInitOptions,
 ): Promise<LanguageClient> {
-    const command = settings.interpreter[0];
     const cwd = settings.cwd;
 
     // Set debugger path needed for debugging python code.
@@ -71,6 +71,7 @@ async function createServer(
 
 let _disposables: Disposable[] = [];
 export async function restartServer(
+    command: string,
     serverId: string,
     serverName: string,
     outputChannel: LogOutputChannel,
@@ -93,7 +94,7 @@ export async function restartServer(
         return undefined;
     }
 
-    const newLSClient = await createServer(workspaceSetting, serverId, serverName, outputChannel, {
+    const newLSClient = await createServer(workspaceSetting, command, serverId, serverName, outputChannel, {
         settings: await getExtensionSettings(serverId, true),
         globalSettings: await getGlobalSettings(serverId, false),
     });
