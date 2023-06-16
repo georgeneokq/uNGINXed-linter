@@ -8,10 +8,7 @@ import { registerLogger, traceError, traceLog, traceVerbose } from './common/log
 import {
     checkVersion,
     getInterpreterDetails,
-    initializePython,
-    onDidChangePythonInterpreter,
     resolveInterpreter,
-    runPythonExtensionCommand,
 } from './common/python';
 import { restartServer } from './common/server';
 import { checkIfConfigurationChanged, getInterpreterFromSetting } from './common/settings';
@@ -42,60 +39,13 @@ const REQUIRED_PACKAGES = [
 let lsClient: LanguageClient | undefined;
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     // Prepare venv URI and paths
-    const venvUri = vscode.Uri.joinPath(context.globalStorageUri, 'venv')
+    const venvUri = vscode.Uri.joinPath(context.extensionUri, 'venv')
     const venvPath = venvUri.fsPath
     const venvScriptsUri = vscode.Uri.joinPath(venvUri, 'Scripts')
 
     // Currently only supports Windows by using hard-coded .exe extension
     const venvPythonUri = vscode.Uri.joinPath(venvScriptsUri, 'python.exe')
     const venvPythonPath = venvPythonUri.fsPath
-
-    // Python interpreter may be selected some time later
-    let pythonInterpreter = (await getInterpreterDetails()).path?.[0]
-
-    const performFirstTimeSetup = async () => {
-        // Check if venv already exists (first-time setup has been performed)
-        try {
-            await vscode.workspace.fs.readDirectory(venvUri)
-    
-            // Check if all required packages are installed (may have failed halfway)
-            const pipFreezeResult = await execAsync(`${venvPythonPath} freeze`)
-            const lines = pipFreezeResult.stdout.split('\n')
-            const packages = lines.map((line) => line.split('==')[0])
-            if(REQUIRED_PACKAGES.some((requiredPackage) => !packages.includes(requiredPackage)))
-                throw new Error('Required packages missing. Installing dependencies...')
-
-            /* Function ends here if first time setup has already been completed */
-        } catch(e) {
-            // TODO: Subscribe to onDidChangePythonInterpreter event and automatically continue operations
-            if(!pythonInterpreter) {
-                vscode.window.showErrorMessage('[uNGINXed] Python interpreter needs to be selected to perform first-time setup.')
-                return
-            }
-    
-            // Create venv. This is the only thing the user-selected python interpreter will be used for.
-            const venvCreationResult = await execAsync(`${pythonInterpreter} -m venv ${venvPath}`)
-    
-            // TODO: Try to ship a python executable with the vsix to avoid depending on the user's system
-            //       having python installed
-            if(venvCreationResult.err) {
-                vscode.window.showErrorMessage(`[uNGINXed] Error creating venv: ${venvCreationResult.err.message}`)
-                return
-            }
-            
-            vscode.window.showInformationMessage('[uNGINXed] Installing dependencies...')
-            
-            // Upon successful creation of venv, install required packages.
-            const pipInstallResult = await execAsync(`${venvPythonPath} -m pip install ${REQUIRED_PACKAGES.join(' ')}`)
-
-            if(pipInstallResult.err)
-                vscode.window.showErrorMessage('[uNGINXed] Error installing dependencies.')
-            else
-                vscode.window.showInformationMessage('[uNGINXed] Setup complete!')
-        }
-    }
-    
-    await performFirstTimeSetup()
     
     // This is required to get server name and module. This should be
     // the first thing that we do in this extension.
@@ -120,11 +70,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             await changeLogLevel(outputChannel.logLevel, e);
         }),
         vscode.commands.registerTextEditorCommand('unginxed.generatePDF', async (textEditor, _) => {
-            if(!pythonInterpreter) {
-                vscode.window.showErrorMessage('A Python interpreter must be selected before this extension can be used.')
-                return
-            }
-
             // Create directory to write PDF
             const workspaceDir = vscode.workspace.workspaceFolders[0].uri
             const outputUri = vscode.Uri.joinPath(workspaceDir, 'output', 'unginxed')
@@ -156,35 +101,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     traceVerbose(`Configuration: ${JSON.stringify(serverInfo)}`);
 
     const runServer = async () => {
-        const interpreter = getInterpreterFromSetting(serverId);
-        if (interpreter && interpreter.length > 0 && checkVersion(await resolveInterpreter(interpreter))) {
-            traceVerbose(`Using interpreter from ${serverInfo.module}.interpreter: ${interpreter.join(' ')}`);
-            lsClient = await restartServer(venvPythonPath, serverId, serverName, outputChannel, lsClient);
-            return;
-        }
-
-        const interpreterDetails = await getInterpreterDetails();
-        if (interpreterDetails.path) {
-            traceVerbose(`Using interpreter from Python extension: ${interpreterDetails.path.join(' ')}`);
-            lsClient = await restartServer(venvPythonPath, serverId, serverName, outputChannel, lsClient);
-            return;
-        }
-
-        traceError(
-            'Python interpreter missing:\r\n' +
-                '[Option 1] Select python interpreter using the ms-python.python.\r\n' +
-                `[Option 2] Set an interpreter using "${serverId}.interpreter" setting.\r\n` +
-                'Please use Python 3.7 or greater.',
-        );
+        lsClient = await restartServer(venvPythonPath, serverId, serverName, outputChannel, lsClient);
     };
 
     context.subscriptions.push(
-        onDidChangePythonInterpreter(async () => {
-            vscode.window.showErrorMessage('')
-            pythonInterpreter = (await getInterpreterDetails()).path?.[0]
-            await performFirstTimeSetup()
-            await runServer();
-        }),
         onDidChangeConfiguration(async (e: vscode.ConfigurationChangeEvent) => {
             if (checkIfConfigurationChanged(e, serverId)) {
                 await runServer();
@@ -195,16 +115,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }),
     );
 
-    setImmediate(async () => {
-        const interpreter = getInterpreterFromSetting(serverId);
-        if (interpreter === undefined || interpreter.length === 0) {
-            traceLog(`Python extension loading`);
-            await initializePython(context.subscriptions);
-            traceLog(`Python extension loaded`);
-        } else {
-            await runServer();
-        }
-    });
+    await runServer()
 }
 
 export async function deactivate(): Promise<void> {

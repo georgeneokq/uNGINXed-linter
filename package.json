@@ -9,7 +9,8 @@
 		"vscode": "^1.75.0"
 	},
 	"activationEvents": [
-		"onStartupFinished"
+		"onStartupFinished",
+		"onLanguage:plaintext"
 	],
 	"serverInfo": {
 			"name": "unginxed",
@@ -50,10 +51,11 @@
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",
-		"compile": "tsc -b",
-		"watch": "tsc -b -w",
+		"build-python": "python ./tools/build-python.py",
+		"compile": "npm run build-python && tsc -b",
+		"watch": "npm run build-python && tsc -b -w",
 		"lint": "eslint ./client/src --ext .ts,.tsx",
-		"postinstall": "cd client && npm install && cd ..",
+		"postinstall": "npm -w client install",
 		"test": "sh ./scripts/e2e.sh"
 	},
 	"devDependencies": {
