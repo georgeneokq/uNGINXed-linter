@@ -8,8 +8,13 @@ import sys
 sys.path.append(path.join(sys.path[0], '..', '..', 'uNGINXed'))
 import unginxed
 
-
 server = LanguageServer('unginxed', 'v0.1')
+
+severity_mapping = {
+    unginxed.signature.Severity.GREEN: lsp.DiagnosticSeverity.Information,
+    unginxed.signature.Severity.ORANGE: lsp.DiagnosticSeverity.Warning,
+    unginxed.signature.Severity.RED: lsp.DiagnosticSeverity.Error
+}
 
 @server.feature(lsp.TEXT_DOCUMENT_DID_OPEN)
 def did_open(param: lsp.DidOpenTextDocumentParams)-> None:
@@ -30,7 +35,6 @@ def did_close(param: lsp.DidOpenTextDocumentParams) -> None:
     document = server.workspace.get_document(param.text_document.uri)
     server.publish_diagnostics(document.uri, [])
 
-
 def _convert_to_diagnostics(result: unginxed.Signature) -> list[lsp.Diagnostic]:
     '''
     Converts a all lines flagged in a uNGINXed Signature to a list of LSP Diagnostics
@@ -42,7 +46,7 @@ def _convert_to_diagnostics(result: unginxed.Signature) -> list[lsp.Diagnostic]:
         diagnostic = lsp.Diagnostic(
             range=lsp.Range(start=start, end=end),
             message=result.description,
-            severity=lsp.DiagnosticSeverity.Error,
+            severity=severity_mapping[result.severity],
             source=result.name
         )
         diagnostics.append(diagnostic)
