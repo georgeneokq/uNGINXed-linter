@@ -39,11 +39,10 @@ const REQUIRED_PACKAGES = [
 
 let lsClient: LanguageClient | undefined;
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-    const isWindows = os.platform() == 'win32'
+    const isWindows = os.platform() === 'win32'
 
     // Prepare venv URI and paths
     const venvUri = vscode.Uri.joinPath(context.extensionUri, 'venv')
-    const venvPath = venvUri.fsPath
     var venvScriptsUri = vscode.Uri.joinPath(venvUri, 'bin')
 
     if (isWindows){
