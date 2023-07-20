@@ -50,7 +50,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         venvScriptsUri = vscode.Uri.joinPath(venvUri, 'Scripts')
     }
 
-    // Currently only supports Windows by using hard-coded .exe extension
     var interpreter = 'python'
     if (isWindows) {
         var interpreter = 'python.exe'
