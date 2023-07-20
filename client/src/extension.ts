@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import * as vscode from 'vscode';
-import { exec, ExecException } from 'child_process';
+import { exec, ExecException,execSync } from 'child_process';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { registerLogger, traceError, traceLog, traceVerbose } from './common/log/logging';
 import {
@@ -40,6 +40,18 @@ const REQUIRED_PACKAGES = [
 let lsClient: LanguageClient | undefined;
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const isWindows = os.platform() === 'win32'
+    var pythonPath = vscode.workspace.getConfiguration("python").get("defaultInterpreterPath")
+    console.log(pythonPath)
+    const setupScriptPath = vscode.Uri.joinPath(context.extensionUri, 'tools', 'build-python.py')
+    var setupCommand = `${pythonPath} ${setupScriptPath.fsPath} ${context.extensionUri.fsPath}`
+    vscode.window.showInformationMessage('Initialising extension...')
+    try{
+        execSync(setupCommand, {stdio: 'inherit'})
+    } catch(err) {
+        vscode.window.showErrorMessage(`Unable to active extension. Error: ${err.stderr}`)
+        console.log(err.stderr)
+    }
+    vscode.window.showInformationMessage('Initialisation Complete!')    
 
     // Prepare venv URI and paths
     const venvUri = vscode.Uri.joinPath(context.extensionUri, 'venv')

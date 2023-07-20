@@ -4,6 +4,7 @@ import venv
 import platform
 from os import path
 from pathlib import Path
+from sys import argv
 
 def main():
     if Path('venv').exists():
@@ -11,14 +12,15 @@ def main():
 
     # Create venv and install dependencies
     print('Creating virtual environment...')
-    venv.create('venv', with_pip=True)
+    venv_path = path.join(argv[1],'venv')
+    venv.create(venv_path, with_pip=True)
 
     # Use python from venv
     project_root_path = path.join(Path(__file__).parent.parent)
     is_windows = platform.system() == 'Windows'
     interpreter_path = path.join('Scripts','python.exe') if is_windows else path.join('bin','python')
-    python_path = path.join(project_root_path, 'venv', interpreter_path)
-    requirements_txt_path = path.join(project_root_path, 'requirements.txt')
+    python_path = path.join(venv_path, interpreter_path)
+    requirements_txt_path = path.join(argv[1], 'requirements.txt')
 
     # Run pip install
     command = f'{python_path} -m pip install -r {requirements_txt_path}'

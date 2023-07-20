@@ -57,8 +57,8 @@
 		"vscode:prepublish": "npm run compile",
 		"build-python": "python ./tools/build-python.py",
 		"build-vsix": "npx -y mkdirp dist && npx -y @vscode/vsce package --out=\"./dist/unginxed-linter.vsix\"",
-		"compile": "npm run build-python && tsc -b",
-		"watch": "npm run build-python && tsc -b -w",
+		"compile": "tsc -b",
+		"watch": "tsc -b -w",
 		"lint": "eslint ./client/src --ext .ts,.tsx",
 		"test": "sh ./scripts/e2e.sh"
 	},
