@@ -15,6 +15,7 @@ import { checkIfConfigurationChanged, getInterpreterFromSetting } from './common
 import { loadServerDefaults } from './common/setup';
 import { getLSClientTraceLevel, getProjectRoot } from './common/utilities';
 import { createOutputChannel, onDidChangeConfiguration, registerCommand } from './common/vscodeapi';
+import * as os from 'os';
 
 interface ExecReturn {
     err: ExecException
@@ -38,13 +39,23 @@ const REQUIRED_PACKAGES = [
 
 let lsClient: LanguageClient | undefined;
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+    const isWindows = os.platform() == 'win32'
+
     // Prepare venv URI and paths
     const venvUri = vscode.Uri.joinPath(context.extensionUri, 'venv')
     const venvPath = venvUri.fsPath
-    const venvScriptsUri = vscode.Uri.joinPath(venvUri, 'Scripts')
+    var venvScriptsUri = vscode.Uri.joinPath(venvUri, 'bin')
+
+    if (isWindows){
+        venvScriptsUri = vscode.Uri.joinPath(venvUri, 'Scripts')
+    }
 
     // Currently only supports Windows by using hard-coded .exe extension
-    const venvPythonUri = vscode.Uri.joinPath(venvScriptsUri, 'python.exe')
+    var interpreter = 'python'
+    if (isWindows) {
+        var interpreter = 'python.exe'
+    }
+    const venvPythonUri = vscode.Uri.joinPath(venvScriptsUri, interpreter)
     const venvPythonPath = venvPythonUri.fsPath
     
     // This is required to get server name and module. This should be

@@ -1,9 +1,9 @@
 # Create venv only if it does not exist.
 import subprocess
 import venv
+import platform
 from os import path
 from pathlib import Path
-
 
 def main():
     if Path('venv').exists():
@@ -15,7 +15,9 @@ def main():
 
     # Use python from venv
     project_root_path = path.join(Path(__file__).parent.parent)
-    python_path = path.join(project_root_path, 'venv', 'Scripts', 'python.exe')
+    is_windows = platform.system() == 'Windows'
+    interpreter_path = path.join('Scripts','python.exe') if is_windows else path.join('bin','python')
+    python_path = path.join(project_root_path, 'venv', interpreter_path)
     requirements_txt_path = path.join(project_root_path, 'requirements.txt')
 
     # Run pip install
