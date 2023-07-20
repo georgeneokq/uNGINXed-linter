@@ -60,7 +60,6 @@
 		"compile": "npm run build-python && tsc -b",
 		"watch": "npm run build-python && tsc -b -w",
 		"lint": "eslint ./client/src --ext .ts,.tsx",
-		"postinstall": "npm -w client install",
 		"test": "sh ./scripts/e2e.sh"
 	},
 	"devDependencies": {
