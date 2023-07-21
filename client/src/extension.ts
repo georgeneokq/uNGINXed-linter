@@ -99,14 +99,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.workspace.fs.createDirectory(outputUri)
 
             // Execute command to write PDF
-            const unginxedModulePath = vscode.Uri.joinPath(context.extensionUri, 'uNGINXed').fsPath
             const openEditorFilePath = textEditor.document.fileName
 
-            // Currently only supports windows by executing batch script commands.
-            // For this call of "exec", edit the PYTHONPATH variable
-            const command = `SET PYTHONPATH=%PYTHONPATH%;${unginxedModulePath} && ${venvPythonPath} -m unginxed ${openEditorFilePath} --pdf-output=${outputDir}`
-            console.log('Writing PDF. Command:')
-            console.log(command)
+            const command = `${venvPythonPath} -m unginxed ${openEditorFilePath} --pdf-output=${outputDir}`
 
             // Currently only tested for windows
             exec(command, (err, stdout, stderr) => {
