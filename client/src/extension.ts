@@ -40,29 +40,32 @@ const REQUIRED_PACKAGES = [
 let lsClient: LanguageClient | undefined;
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const isWindows = os.platform() === 'win32'
-    var pythonPath: string = vscode.workspace.getConfiguration("python").get("defaultInterpreterPath")
+
+    const pythonPath = (await getInterpreterDetails()).path[0]
     const setupScriptPath = vscode.Uri.joinPath(context.extensionUri, 'tools', 'build-python.py')
-    var setupCommand = `${pythonPath} ${setupScriptPath.fsPath} ${context.extensionUri.fsPath}`
+
     vscode.window.showInformationMessage('Initialising Extension...')
-    var spawn = spawnSync(pythonPath, [setupScriptPath.fsPath, context.extensionUri.fsPath])
-    if (spawn.stderr.toString()){
-        vscode.window.showErrorMessage(`Unable to active extension. Error: ${spawn.stderr.toString()}`)
-        console.log(spawn.stderr.toString())
+    const pythonSubprocess = spawnSync(pythonPath, [setupScriptPath.fsPath, context.extensionUri.fsPath])
+    if (pythonSubprocess.stderr.toString()){
+        vscode.window.showErrorMessage(`Unable to activate extension. Error: ${pythonSubprocess.stderr.toString()}`)
+        console.log(pythonSubprocess.stderr.toString())
     }
+
     vscode.window.showInformationMessage('Initialisation Complete!')    
 
     // Prepare venv URI and paths
     const venvUri = vscode.Uri.joinPath(context.extensionUri, 'venv')
-    var venvScriptsUri = vscode.Uri.joinPath(venvUri, 'bin')
+    let venvScriptsUri = vscode.Uri.joinPath(venvUri, 'bin')
 
-    if (isWindows){
+    if(isWindows){
         venvScriptsUri = vscode.Uri.joinPath(venvUri, 'Scripts')
     }
 
-    var interpreter = 'python'
-    if (isWindows) {
-        var interpreter = 'python.exe'
+    let interpreter = 'python'
+    if(isWindows) {
+        interpreter = 'python.exe'
     }
+
     const venvPythonUri = vscode.Uri.joinPath(venvScriptsUri, interpreter)
     const venvPythonPath = venvPythonUri.fsPath
     
