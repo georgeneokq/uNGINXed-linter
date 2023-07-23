@@ -11,9 +11,9 @@ import unginxed
 server = LanguageServer('unginxed', 'v0.1')
 
 severity_mapping = {
-    unginxed.signature.Severity.GREEN: lsp.DiagnosticSeverity.Information,
-    unginxed.signature.Severity.ORANGE: lsp.DiagnosticSeverity.Warning,
-    unginxed.signature.Severity.RED: lsp.DiagnosticSeverity.Error
+    unginxed.signature.Severity.INFORMATION: lsp.DiagnosticSeverity.Information,
+    unginxed.signature.Severity.WARNING: lsp.DiagnosticSeverity.Warning,
+    unginxed.signature.Severity.ERROR: lsp.DiagnosticSeverity.Error
 }
 
 @server.feature(lsp.TEXT_DOCUMENT_DID_OPEN)

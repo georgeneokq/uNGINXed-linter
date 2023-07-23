@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import * as vscode from 'vscode';
-import { exec, ExecException } from 'child_process';
+import { exec, ExecException, spawnSync } from 'child_process';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { registerLogger, traceError, traceLog, traceVerbose } from './common/log/logging';
 import {
@@ -15,6 +15,7 @@ import { checkIfConfigurationChanged, getInterpreterFromSetting } from './common
 import { loadServerDefaults } from './common/setup';
 import { getLSClientTraceLevel, getProjectRoot } from './common/utilities';
 import { createOutputChannel, onDidChangeConfiguration, registerCommand } from './common/vscodeapi';
+import * as os from 'os';
 
 interface ExecReturn {
     err: ExecException
@@ -38,13 +39,34 @@ const REQUIRED_PACKAGES = [
 
 let lsClient: LanguageClient | undefined;
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+    const isWindows = os.platform() === 'win32'
+
+    const pythonPath = (await getInterpreterDetails()).path[0]
+    const setupScriptPath = vscode.Uri.joinPath(context.extensionUri, 'tools', 'build-python.py')
+
+    vscode.window.showInformationMessage('Initialising Extension...')
+    const pythonSubprocess = spawnSync(pythonPath, [setupScriptPath.fsPath, context.extensionUri.fsPath])
+    if (pythonSubprocess.stderr.toString()){
+        vscode.window.showErrorMessage(`Unable to activate extension. Error: ${pythonSubprocess.stderr.toString()}`)
+        console.log(pythonSubprocess.stderr.toString())
+    }
+
+    vscode.window.showInformationMessage('Initialisation Complete!')    
+
     // Prepare venv URI and paths
     const venvUri = vscode.Uri.joinPath(context.extensionUri, 'venv')
-    const venvPath = venvUri.fsPath
-    const venvScriptsUri = vscode.Uri.joinPath(venvUri, 'Scripts')
+    let venvScriptsUri = vscode.Uri.joinPath(venvUri, 'bin')
 
-    // Currently only supports Windows by using hard-coded .exe extension
-    const venvPythonUri = vscode.Uri.joinPath(venvScriptsUri, 'python.exe')
+    if(isWindows){
+        venvScriptsUri = vscode.Uri.joinPath(venvUri, 'Scripts')
+    }
+
+    let interpreter = 'python'
+    if(isWindows) {
+        interpreter = 'python.exe'
+    }
+
+    const venvPythonUri = vscode.Uri.joinPath(venvScriptsUri, interpreter)
     const venvPythonPath = venvPythonUri.fsPath
     
     // This is required to get server name and module. This should be
@@ -77,14 +99,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.workspace.fs.createDirectory(outputUri)
 
             // Execute command to write PDF
-            const unginxedModulePath = vscode.Uri.joinPath(context.extensionUri, 'uNGINXed').fsPath
             const openEditorFilePath = textEditor.document.fileName
 
-            // Currently only supports windows by executing batch script commands.
-            // For this call of "exec", edit the PYTHONPATH variable
-            const command = `SET PYTHONPATH=%PYTHONPATH%;${unginxedModulePath} && ${venvPythonPath} -m unginxed ${openEditorFilePath} --pdf-output=${outputDir}`
-            console.log('Writing PDF. Command:')
-            console.log(command)
+            const command = `${venvPythonPath} -m unginxed ${openEditorFilePath} --pdf-output=${outputDir}`
 
             // Currently only tested for windows
             exec(command, (err, stdout, stderr) => {
